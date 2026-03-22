@@ -11,7 +11,17 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 const TMP_DIR = '/tmp/musickku-dl';
+const COOKIES_FILE = '/tmp/yt-cookies.txt';
+
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+
+// Tulis cookies dari env ke file
+if (process.env.YT_COOKIES) {
+  fs.writeFileSync(COOKIES_FILE, process.env.YT_COOKIES);
+  console.log('✅ YouTube cookies loaded from environment');
+} else {
+  console.warn('⚠️  YT_COOKIES not set - downloads may fail');
+}
 
 // Cleanup tmp setiap 15 menit
 setInterval(() => {
@@ -29,8 +39,9 @@ app.get('/', (req, res) => {
   res.json({
     status: 'ok',
     app: 'MusicKu Download API',
-    version: '1.0.0',
-    ytdlp: ytdlp.status === 0 ? ytdlp.stdout.toString().trim() : 'NOT FOUND'
+    version: '1.1.0',
+    ytdlp: ytdlp.status === 0 ? ytdlp.stdout.toString().trim() : 'NOT FOUND',
+    cookies: fs.existsSync(COOKIES_FILE) ? 'loaded' : 'missing'
   });
 });
 
@@ -48,14 +59,22 @@ app.post('/api/download', (req, res) => {
   jobs[jobId] = { status: 'downloading', percent: 0, title: safeTitle, videoId };
   console.log(`[DOWNLOAD] Start: ${safeTitle}`);
 
-  const proc = spawn('yt-dlp', [
+  const args = [
     '--no-warnings', '--no-check-certificates',
     '--extractor-args', 'youtube:player_client=android,web',
     '-f', 'bestaudio/best',
     '-x', '--audio-format', 'mp3', '--audio-quality', '0',
     '-o', outTemplate,
-    `https://youtube.com/watch?v=${videoId}`
-  ]);
+  ];
+
+  // Pakai cookies kalau ada
+  if (fs.existsSync(COOKIES_FILE)) {
+    args.push('--cookies', COOKIES_FILE);
+  }
+
+  args.push(`https://youtube.com/watch?v=${videoId}`);
+
+  const proc = spawn('yt-dlp', args);
 
   let output = '';
   proc.stdout.on('data', d => {
@@ -75,7 +94,7 @@ app.post('/api/download', (req, res) => {
       }
     } else {
       jobs[jobId] = { ...jobs[jobId], status: 'error', message: output.slice(-300) };
-      console.error(`[DOWNLOAD] Failed (${code}): ${output.slice(-100)}`);
+      console.error(`[DOWNLOAD] Failed (${code})`);
     }
     setTimeout(() => {
       try { if (jobs[jobId]?.file) fs.unlinkSync(path.join(TMP_DIR, jobs[jobId].file)); } catch {}
@@ -107,4 +126,4 @@ app.get('/api/download/file/:jobId', (req, res) => {
 
 function isValidId(id) { return /^[a-zA-Z0-9_-]{11}$/.test(id); }
 
-app.listen(PORT, () => console.log(`\n⬇️  MusicKu Download API v1.0 — Port:${PORT}\n`));
+app.listen(PORT, () => console.log(`\n⬇️  MusicKu Download API v1.1 — Port:${PORT}\n`));
