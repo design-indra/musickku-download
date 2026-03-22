@@ -62,7 +62,7 @@ app.post('/api/download', (req, res) => {
   const args = [
     '--no-warnings', '--no-check-certificates',
     '--extractor-args', 'youtube:player_client=android,web',
-    '-f', 'bestaudio/best',
+    '-f', 'bestaudio[ext=m4a]/bestaudio/best',
     '-x', '--audio-format', 'mp3', '--audio-quality', '0',
     '-o', outTemplate,
   ];
